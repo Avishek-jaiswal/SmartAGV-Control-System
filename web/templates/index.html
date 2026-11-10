@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart AGV Control Center</title>
+
+<style>
+* {
+    box-sizing: border-box;
+    font-family: Arial, sans-serif;
+}
+
+body {
+    margin: 0;
+    padding: 25px;
+    background: #0b1120;
+    color: #f8fafc;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-bottom: 25px;
+}
+
+.subtitle, .muted {
+    color: #94a3b8;
+}
+
+.badge {
+    padding: 10px 16px;
+    border-radius: 20px;
+    background: #14532d;
+    color: #86efac;
+}
+
+.dashboard {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.card, .panel {
+    background: #172033;
+    padding: 22px;
+    border: 1px solid #29364d;
+    border-radius: 14px;
+}
+
+.card h3 {
+    color: #94a3b8;
+    font-size: 13px;
+}
+
+.value {
+    font-size: 24px;
+    font-weight: bold;
+    overflow-wrap: anywhere;
+}
+
+.layout {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 20px;
+}
+
+h2 {
+    font-size: 19px;
+}
+
+#map {
+    display: grid;
+    grid-template-columns: repeat(11, minmax(0, 1fr));
+    gap: 4px;
+    margin-top: 20px;
+}
+
+.cell {
+    aspect-ratio: 1;
+    background: #26354b;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+}
+
+.home-station { background: #475569; }
+.product-station { background: #a16207; }
+.plant-station { background: #0f766e; }
+.robot {
+    background: #2563eb;
+    color: white;
+    font-size: 19px;
+    font-weight: bold;
+}
+
+.legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    margin-top: 12px;
+    color: #cbd5e1;
+    font-size: 13px;
+}
+
+.controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 16px;
+}
+
+button {
+    padding: 13px 8px;
+    border: none;
+    border-radius: 8px;
+    background: #334155;
+    color: white;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+button:hover:not(:disabled) { opacity: 0.82; }
+button:disabled { cursor: not-allowed; opacity: 0.45; }
+.start { background: #15803d; }
+.stop { background: #475569; }
+.emergency { background: #991b1b; }
+.reset { background: #1d4ed8; }
+.obstacle { background: #b45309; }
+.restock { background: #0f766e; }
+
+.route {
+    display: grid;
+    gap: 10px;
+    padding-left: 24px;
+    color: #94a3b8;
+}
+
+.route .active { color: #fbbf24; font-weight: bold; }
+.route .complete { color: #86efac; }
+
+.log {
+    background: #0b1120;
+    padding: 10px;
+    margin-top: 8px;
+    border-radius: 6px;
+    color: #cbd5e1;
+    font-size: 13px;
+}
+
+#logs {
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.section-gap { margin-top: 28px; }
+
+@media(max-width: 800px) {
+    body { padding: 16px; }
+    .layout { grid-template-columns: 1fr; }
+    .card, .panel { padding: 17px; }
+}
+</style>
+</head>
+
+<body>
+<header>
+    <div>
+        <h1>ND DESIGN IT BOX</h1>
+        <p class="subtitle">Automated AGV Delivery Simulation · Budhram Pathara</p>
+    </div>
+    <div class="badge" id="status" aria-live="polite">CONNECTING</div>
+</header>
+
+<section class="dashboard" aria-label="Live AGV status">
+    <div class="card">
+        <h3>AGV POSITION</h3>
+        <div class="value" id="position">(0, 0)</div>
+    </div>
+    <div class="card">
+        <h3>MOTOR SPEED</h3>
+        <div class="value" id="speed">0%</div>
+    </div>
+    <div class="card">
+        <h3>TRAVEL DIRECTION</h3>
+        <div class="value" id="direction">WEST</div>
+    </div>
+    <div class="card">
+        <h3>DISTANCE TRAVELLED</h3>
+        <div class="value" id="distance">0 units</div>
+    </div>
+    <div class="card">
+        <h3>PRODUCT SENSOR</h3>
+        <div class="value" id="productSensor">READY</div>
+    </div>
+    <div class="card">
+        <h3>COMPLETED DELIVERIES</h3>
+        <div class="value" id="deliveries">0</div>
+    </div>
+</section>
+
+<main class="layout">
+    <section class="panel">
+        <h2>Live Route Map</h2>
+        <p class="subtitle">AGV moves automatically through the station waypoints.</p>
+        <div id="map" role="img" aria-label="AGV route map"></div>
+        <div class="legend">
+            <span>H — Home (0, 0)</span>
+            <span>P — Product Loading (-4, 0)</span>
+            <span>F — Plant Production (4, 0)</span>
+            <span>Arrow — AGV heading</span>
+        </div>
+
+        <h2 class="section-gap">Mission Route</h2>
+        <p>Current waypoint: <strong id="waypoint">AGV Home Position</strong></p>
+        <p>Mission phase: <strong id="missionPhase">IDLE</strong></p>
+        <ol class="route" id="route">
+            <li data-waypoint="AGV Home Position">AGV Home Position (0, 0)</li>
+            <li data-waypoint="Product Loading Station">Product Loading Station (-4, 0)</li>
+            <li data-waypoint="Plant Production Station">Plant Production Station (4, 0)</li>
+        </ol>
+    </section>
+
+    <section class="panel">
+        <h2>Automated Delivery</h2>
+        <p>Product at loading station: <strong id="productAvailable">AVAILABLE</strong></p>
+        <p>Product on AGV: <strong id="productLoaded">NO</strong></p>
+        <p>Delivery status: <strong id="deliveryStatus">READY</strong></p>
+
+        <div class="controls">
+            <button class="start" id="startButton" onclick="sendRequest('/api/mission/start')">
+                Start / Resume Mission
+            </button>
+            <button class="stop" id="pauseButton" onclick="sendRequest('/api/mission/pause')">
+                Pause Mission
+            </button>
+        </div>
+
+        <h2 class="section-gap">Safety Controls</h2>
+        <p>Safety state: <strong id="safety">SAFE</strong></p>
+        <div class="controls">
+            <button class="obstacle" id="obstacleButton" onclick="toggleObstacle()">
+                Simulate Obstacle
+            </button>
+            <button class="emergency" onclick="sendRequest('/api/command', 'emergency')">
+                Emergency Stop
+            </button>
+        </div>
+        <button class="reset" id="resetButton" style="width:100%; margin-top:10px"
+                onclick="sendRequest('/api/command', 'reset')">
+            Manual Emergency Reset
+        </button>
+        <button class="restock" id="restockButton" style="width:100%; margin-top:10px"
+                onclick="sendRequest('/api/command', 'new_product')">
+            Restock Simulated Product
+        </button>
+
+        <h2 class="section-gap">Activity Log</h2>
+        <div id="logs" aria-live="polite">
+            <div class="log">Dashboard initialized.</div>
+        </div>
+        <p class="muted section-gap">
+            Simulation only: no physical motors, sensors, or PLC are connected.
+        </p>
+    </section>
+</main>
+
+<script>
+const map = document.getElementById("map");
+let lastMessage = "";
+let refreshInProgress = false;
+
+function drawMap(data) {
+    map.replaceChildren();
+
+    for (let row = 5; row >= -5; row--) {
+        for (let col = -5; col <= 5; col++) {
+            const cell = document.createElement("div");
+            cell.className = "cell";
+
+            const station = data.waypoints.find(
+                point => point.x === col && point.y === row
+            );
+            if (station?.name === "AGV Home Position") {
+                cell.classList.add("home-station");
+                cell.textContent = "H";
+                cell.title = station.name;
+            } else if (station?.name === "Product Loading Station") {
+                cell.classList.add("product-station");
+                cell.textContent = "P";
+                cell.title = station.name;
+            } else if (station?.name === "Plant Production Station") {
+                cell.classList.add("plant-station");
+                cell.textContent = "F";
+                cell.title = station.name;
+            }
+
+            if (col === data.x && row === data.y) {
+                const arrows = { NORTH: "↑", SOUTH: "↓", EAST: "→", WEST: "←" };
+                cell.classList.add("robot");
+                cell.textContent = arrows[data.direction] || "AGV";
+                cell.title = data.product_loaded
+                    ? "AGV carrying product"
+                    : "AGV";
+            }
+            map.appendChild(cell);
+        }
+    }
+}
+
+function addLog(message) {
+    const item = document.createElement("div");
+    item.className = "log";
+    item.textContent = new Date().toLocaleTimeString() + " - " + message;
+    document.getElementById("logs").prepend(item);
+}
+
+function renderState(data) {
+    document.getElementById("position").textContent = `(${data.x}, ${data.y})`;
+    document.getElementById("speed").textContent = `${data.speed}%`;
+    document.getElementById("direction").textContent = data.direction;
+    document.getElementById("distance").textContent = `${data.distance} units`;
+    document.getElementById("status").textContent = data.status;
+    document.getElementById("safety").textContent =
+        data.emergency ? "EMERGENCY STOP" : data.obstacle ? "OBSTACLE DETECTED" :
+        data.safe ? "SAFE" : "BLOCKED";
+    document.getElementById("productSensor").textContent =
+        data.product_sensor ? "PRODUCT DETECTED" : "NO PRODUCT DETECTED";
+    document.getElementById("deliveries").textContent = data.completed_tasks;
+    document.getElementById("waypoint").textContent = data.current_waypoint;
+    document.getElementById("missionPhase").textContent = data.stage.replaceAll("_", " ");
+    document.getElementById("productAvailable").textContent =
+        data.product_available ? "AVAILABLE" : "COLLECTED";
+    document.getElementById("productLoaded").textContent =
+        data.product_loaded ? "YES" : "NO";
+    document.getElementById("deliveryStatus").textContent = data.delivery_status;
+
+    document.getElementById("startButton").disabled =
+        data.emergency || data.obstacle || data.auto_mode ||
+        (!data.product_available && data.delivery_status !== "IN_PROGRESS");
+    document.getElementById("pauseButton").disabled = !data.auto_mode;
+    document.getElementById("resetButton").disabled = !data.emergency;
+    document.getElementById("restockButton").disabled =
+        data.auto_mode || data.delivery_status === "IN_PROGRESS" || data.product_loaded;
+
+    const obstacleButton = document.getElementById("obstacleButton");
+    obstacleButton.textContent = data.obstacle ? "Clear Simulated Obstacle" : "Simulate Obstacle";
+    obstacleButton.dataset.action = data.obstacle ? "obstacle_off" : "obstacle_on";
+
+    document.querySelectorAll("#route li").forEach((item, index) => {
+        item.classList.toggle(
+            "complete",
+            data.delivery_status === "COMPLETED" ||
+            (index === 0 && data.stage !== "IDLE")
+        );
+        item.classList.toggle(
+            "active",
+            item.dataset.waypoint === data.current_waypoint &&
+            data.delivery_status !== "COMPLETED"
+        );
+    });
+
+    if (data.message !== lastMessage) {
+        addLog(data.message);
+        lastMessage = data.message;
+    }
+    drawMap(data);
+}
+
+async function sendRequest(url, action = null) {
+    const options = { method: "POST" };
+    if (action) {
+        options.headers = { "Content-Type": "application/json" };
+        options.body = JSON.stringify({ action });
+    }
+
+    try {
+        const response = await fetch(url, options);
+        const data = await response.json();
+        if (!response.ok) {
+            addLog(data.error || "Request failed");
+            return;
+        }
+        renderState(data);
+    } catch (error) {
+        addLog("Could not connect to the simulation server");
+    }
+}
+
+function toggleObstacle() {
+    sendRequest("/api/command", document.getElementById("obstacleButton").dataset.action);
+}
+
+async function refreshState() {
+    if (refreshInProgress) return;
+    refreshInProgress = true;
+    try {
+        const response = await fetch("/api/state");
+        if (!response.ok) throw new Error("State request failed");
+        renderState(await response.json());
+    } catch (error) {
+        document.getElementById("status").textContent = "SERVER OFFLINE";
+    } finally {
+        refreshInProgress = false;
+    }
+}
+
+refreshState();
+setInterval(refreshState, 250);
+</script>
+</body>
+</html>
